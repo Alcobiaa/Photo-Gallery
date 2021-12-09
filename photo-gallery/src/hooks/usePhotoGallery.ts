@@ -14,16 +14,21 @@ export function usePhotoGallery() {
       const loadSaved = async () => {
         const { value } = await Storage.get({ key: PHOTO_STORAGE });
         const photosInStorage = (value ? JSON.parse(value) : []) as UserPhoto[];
-    
-        for (let photo of photosInStorage) {
-          const file = await Filesystem.readFile({
-            path: photo.path ? photo.path : '',
-            directory: Directory.Data,
-          });
-          // Web platform only: Load the photo as base64 data
-          photo.webviewPath = `data:image/jpeg;base64,${file.data}`;
+        
+        // If running on the web..
+        if(!isPlatform('hybrid')){
+          for (let photo of photosInStorage) {
+            const file = await Filesystem.readFile({
+              path: photo.path ? photo.path : '',
+              directory: Directory.Data,
+            });
+            // Web platform only: Load the photo as base64 data
+            photo.webviewPath = `data:image/jpeg;base64,${file.data}`;
+          }
         }
-        setPhotos(photosInStorage);
+
+        setPhotos(photosInStorage); 
+        
       };
       loadSaved();
     }, []);
@@ -39,7 +44,7 @@ export function usePhotoGallery() {
         const savedFileImage = await savePicture(photo, fileName);
         const newUserPhoto: UserPhoto = {
           path: savedFileImage.path,
-          webviewPath: savedFileImage.webPath,
+          webviewPath: savedFileImage.webviewPath,
         }
         const newPhotos: UserPhoto[] = [newUserPhoto, ...photos];
         setPhotos(newPhotos);
@@ -49,13 +54,37 @@ export function usePhotoGallery() {
 
     
 
-    const savePicture= async (photo: CameraPhoto, fileName: string): Promise<Photo> => {
-        const base64Data = await base64FromPath(photo.webPath!);
+    const savePicture= async (photo: Photo, fileName: string): Promise<UserPhoto> => {
+        let base64Data: string;
+
+        if(isPlatform('hybrid')){
+          const file = await Filesystem.readFile({
+            path: photo.path!,
+          });
+          base64Data = file.data;
+        } 
+        else { 
+          base64Data = await base64FromPath(photo.webPath!);
+        }
+        //const base64Data = await base64FromPath(photo.webPath!);
         const savedFile = await Filesystem.writeFile({
             path: fileName,
             data: base64Data,
             directory: Directory.Data
         });
+
+        if(isPlatform('hybrid')){
+          return{
+            path: savedFile.uri,
+            webviewPath: Capacitor.convertFileSrc(savedFile.uri),
+          };
+        }
+        else{
+          return{
+            path: fileName,
+            webviewPath: photo.webPath,
+          };
+        }
 
         // Use webPath to display the new image instead of base64 since it's
         // already loaded into memory
@@ -65,7 +94,7 @@ export function usePhotoGallery() {
           // base64String: photo.base64String,
 
         return photo
-    }
+    };
 
     return{
       photos,
